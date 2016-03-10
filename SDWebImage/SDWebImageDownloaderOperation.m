@@ -387,29 +387,39 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
         if (self.options & SDWebImageDownloaderIgnoreCachedResponse && responseFromCached) {
             completionBlock(nil, nil, nil, YES);
         } else if (self.imageData) {
+            NSMutableData *data;
             if ([self isBase64Encoded]) {
                 NSError *error = nil;
                 NSDictionary *response = [NSJSONSerialization JSONObjectWithData:self.imageData options:kNilOptions error:&error];
                 if (error == nil) {
-                    self.imageData = [[[NSData alloc] initWithBase64EncodedString:[response objectForKey:@"image"] options:kNilOptions] mutableCopy];
+                    id imageObject = [response objectForKey:@"image"];
+                    if (imageObject) {
+                        data = [[[NSData alloc] initWithBase64EncodedString:[response objectForKey:@"image"] options:kNilOptions] mutableCopy];
+                    } else {
+                        completionBlock(nil, nil, [NSError errorWithDomain:SDWebImageErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Image data is nil"}], YES);
+                    }
                 }
+            } else {
+                data = [self imageData];
             }
-
-            UIImage *image = [UIImage sd_imageWithData:self.imageData];
-            NSString *key = [[SDWebImageManager sharedManager] cacheKeyForURL:self.request.URL];
-            image = [self scaledImageForKey:key image:image];
             
-            // Do not force decoding animated GIFs
-            if (!image.images) {
-                if (self.shouldDecompressImages) {
-                    image = [UIImage decodedImageWithImage:image];
+            if (data) {
+                UIImage *image = [UIImage sd_imageWithData:data];
+                NSString *key = [[SDWebImageManager sharedManager] cacheKeyForURL:self.request.URL];
+                image = [self scaledImageForKey:key image:image];
+                
+                // Do not force decoding animated GIFs
+                if (!image.images) {
+                    if (self.shouldDecompressImages) {
+                        image = [UIImage decodedImageWithImage:image];
+                    }
                 }
-            }
-            if (CGSizeEqualToSize(image.size, CGSizeZero)) {
-                completionBlock(nil, nil, [NSError errorWithDomain:SDWebImageErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Downloaded image has 0 pixels"}], YES);
-            }
-            else {
-                completionBlock(image, self.imageData, nil, YES);
+                if (CGSizeEqualToSize(image.size, CGSizeZero)) {
+                    completionBlock(nil, nil, [NSError errorWithDomain:SDWebImageErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Downloaded image has 0 pixels"}], YES);
+                }
+                else {
+                    completionBlock(image, data, nil, YES);
+                }
             }
         } else {
             completionBlock(nil, nil, [NSError errorWithDomain:SDWebImageErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Image data is nil"}], YES);
